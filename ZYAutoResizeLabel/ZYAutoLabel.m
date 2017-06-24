@@ -29,6 +29,8 @@ typedef NS_ENUM(NSInteger,ZYAutoLabelTouchType) {
     
     float _offSetX;
     float _offSetY;
+    
+    CGPoint _center;
 }
 
 @property(nonatomic,assign) CGFloat translateX;
@@ -72,8 +74,8 @@ typedef NS_ENUM(NSInteger,ZYAutoLabelTouchType) {
 #define KMaxWidth [UIScreen mainScreen].bounds.size.width
 #define KMaxHeight [UIScreen mainScreen].bounds.size.height
 
-#define KTouchViewWidth 10
-#define KSpace 10
+#define KTouchViewWidth 20
+#define KSpace 20
 /** 随机色 */
 #define KarcRandomColor [UIColor colorWithRed:arc4random_uniform(256)/255.0 green:arc4random_uniform(256)/255.0 blue:arc4random_uniform(256)/255.0 alpha:1.0]
 
@@ -113,15 +115,16 @@ typedef NS_ENUM(NSInteger,ZYAutoLabelTouchType) {
         _boardView.backgroundColor = [UIColor clearColor];
         _boardView.opaque = YES;
         _boardView.layer.borderWidth = 1;
+        _boardView.layer.allowsEdgeAntialiasing = YES;
         [self addSubview:_boardView];
         
-        UIRotationGestureRecognizer *rotation = [[UIRotationGestureRecognizer alloc] initWithTarget:self action:@selector(handlePinchAndRotate:)];
-        rotation.delegate = self;
-        [self addGestureRecognizer:rotation];
+//        UIRotationGestureRecognizer *rotation = [[UIRotationGestureRecognizer alloc] initWithTarget:self action:@selector(handlePinchAndRotate:)];
+//        rotation.delegate = self;
+//        [self addGestureRecognizer:rotation];
         
         
-        UIPinchGestureRecognizer *pinch = [[UIPinchGestureRecognizer alloc] initWithTarget:self action:@selector(handlePinchAndRotate:)];
-        [self addGestureRecognizer:pinch];
+//        UIPinchGestureRecognizer *pinch = [[UIPinchGestureRecognizer alloc] initWithTarget:self action:@selector(handlePinchAndRotate:)];
+//        [self addGestureRecognizer:pinch];
         _scaleY = 1;
         _scaleX = 1;
         
@@ -135,7 +138,6 @@ typedef NS_ENUM(NSInteger,ZYAutoLabelTouchType) {
     _text = text;
     CGSize labelSize = [text boundingRectWithSize:CGSizeMake(KMaxWidth, KMaxHeight) options:NSStringDrawingUsesLineFragmentOrigin attributes:@{NSFontAttributeName:[UIFont systemFontOfSize:50]} context:nil].size;
     self.z_size = labelSize;
-    self.center = CGPointMake(KMaxWidth/2, KMaxWidth/2);
     
     _defalutRect = self.frame;
     
@@ -147,6 +149,7 @@ typedef NS_ENUM(NSInteger,ZYAutoLabelTouchType) {
     [self layoutAutoLabelTouchViewWithRect:self.bounds];
 
 }
+
 
 - (void)layoutAutoLabelTouchViewWithRect:(CGRect)bounds{
     CGFloat width = bounds.size.width;
@@ -163,17 +166,33 @@ typedef NS_ENUM(NSInteger,ZYAutoLabelTouchType) {
     return YES;
 }
 
-- (void)layoutSubviews{
-    if (self.z_left < -self.z_width || self.z_top < - self.z_height) {
-        self.center = CGPointMake(KMaxWidth/2, KMaxHeight/2);
+-(void)setAnchorPoint:(CGPoint)anchorPoint forView:(UIView *)view
+{
+    CGPoint point = view.layer.anchorPoint;
+    
+    if (point.x == anchorPoint.x && point.y == anchorPoint.y) {
+        return;
     }
     
-    if (self.z_left > KMaxWidth || self.z_top > KMaxHeight) {
-        self.center = CGPointMake(KMaxWidth/2, KMaxHeight/2);
-    }
+    CGPoint newPoint = CGPointMake(view.bounds.size.width * anchorPoint.x,
+                                   view.bounds.size.height * anchorPoint.y);
+    CGPoint oldPoint = CGPointMake(view.bounds.size.width * view.layer.anchorPoint.x,
+                                   view.bounds.size.height * view.layer.anchorPoint.y);
     
-    [super layoutSubviews];
+    newPoint = CGPointApplyAffineTransform(newPoint, view.transform);
+    oldPoint = CGPointApplyAffineTransform(oldPoint, view.transform);
+    
+    CGPoint position = view.layer.position;
+    
+    position.x -= oldPoint.x;
+    position.x += newPoint.x;
+    
+    position.y -= oldPoint.y;
+    position.y += newPoint.y;
+    view.layer.position = position;
+    view.layer.anchorPoint = anchorPoint;
 }
+
 
 
 - (BOOL)isContainsViewWithPoint:(CGPoint)point{
@@ -199,7 +218,7 @@ typedef NS_ENUM(NSInteger,ZYAutoLabelTouchType) {
 }
 
 - (BOOL)jugeTouchView:(UIView *)touchView containPoint:(CGPoint)point{
-    CGRect donwR = [self convertRect:touchView.frame toView:self.superview];
+    CGRect donwR = [self convertRect:touchView.frame toView:self.selfView];
     donwR = CGRectMake(donwR.origin.x - 10, donwR.origin.y - 10, donwR.size.width + 10, donwR.size.height + 10);
     if (CGRectContainsPoint(donwR, point)) {
         return YES;
@@ -210,7 +229,7 @@ typedef NS_ENUM(NSInteger,ZYAutoLabelTouchType) {
 #pragma mark - 手指点击 移动
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event{
     UITouch *touch = [touches anyObject];
-    CGPoint point = [touch locationInView:self.superview];
+    CGPoint point = [touch locationInView:self.selfView];
     
     if ([self isContainsViewWithPoint:point]) {
         _lastTouch = touch;
@@ -223,19 +242,26 @@ typedef NS_ENUM(NSInteger,ZYAutoLabelTouchType) {
 
 - (void)touchesMoved:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event{
     UITouch *touch = [touches anyObject];
-    CGPoint point = [touch locationInView:self.superview];
+    CGPoint point = [touch locationInView:self.selfView];
     
     if (touch == _lastTouch) {
         
         //改变 锚点
-//        [self changeTouchViewArchPoint];
+        [self changeTouchViewArchPoint];
         
         CGFloat offsetX = point.x - _lastPoint.x;
         CGFloat offsetY = point.y - _lastPoint.y;
         
-//        if (self.z_width + offsetX > KMaxWidth || self.z_height + offsetY > KMaxHeight) {
-//            return;
-//        }
+        CGPoint anchorPoint = self.layer.anchorPoint;
+        
+        if (anchorPoint.y == 1) {
+            offsetY = _lastPoint.y - point.y;
+        }
+        
+        if (anchorPoint.x == 1) {
+            offsetX = _lastPoint.x - point.x;
+        }
+        
         
         if (self.z_width + offsetX < 50 || self.z_height + offsetY < 30) {
             return;
@@ -260,19 +286,19 @@ typedef NS_ENUM(NSInteger,ZYAutoLabelTouchType) {
     }else if(touch.tapCount == 1){
         
         //移动位置
-        CGFloat offsetX = point.x - _viewPoint.x;
-        CGFloat offsetY = point.y - _viewPoint.y;
-        
-        [self.rotationQueue cancelAllOperations];
-        [self.rotationQueue addOperationWithBlock:^{
-            dispatch_async(dispatch_get_main_queue(), ^{
-                
-                CGAffineTransform t = CGAffineTransformTranslate(self.transform, 0, 0);
-                self.transform = t;
-                self.z_centerX += offsetX;
-                self.z_centerY += offsetY;
-            });
-        }];
+//        CGFloat offsetX = point.x - _viewPoint.x;
+//        CGFloat offsetY = point.y - _viewPoint.y;
+//        
+//        [self.rotationQueue cancelAllOperations];
+//        [self.rotationQueue addOperationWithBlock:^{
+//            dispatch_async(dispatch_get_main_queue(), ^{
+//                
+//                CGAffineTransform t = CGAffineTransformTranslate(self.transform, 0, 0);
+//                self.transform = t;
+//                self.z_centerX += offsetX;
+//                self.z_centerY += offsetY;
+//            });
+//        }];
         
         _viewPoint = point;
     }
@@ -304,9 +330,23 @@ typedef NS_ENUM(NSInteger,ZYAutoLabelTouchType) {
     self.boardView.center = self.autoLabel.center;
     
     [self layoutAutoLabelTouchViewWithRect:rect];
-
-    NSLog(@"%@",NSStringFromCGRect(self.frame));
 }
+
+- (void)setScale:(CGFloat)scale{
+    _scale = scale;
+    
+    [self setAnchorPoint:CGPointMake(.5, .5) forView:self];
+    
+    _scaleX *= scale;
+    _scaleY *= scale;
+    [self.rotationQueue cancelAllOperations];
+    [self.rotationQueue addOperationWithBlock:^{
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self resizeFrame];
+        });
+    }];
+}
+
 
 - (void)handlePinchAndRotate:(UIGestureRecognizer *)gesture{
 //    [gesture isKindOfClass:[UIPinchGestureRecognizer class]] && gesture.state == UIGestureRecognizerStateChanged
@@ -332,17 +372,8 @@ typedef NS_ENUM(NSInteger,ZYAutoLabelTouchType) {
         }
         
         double angle = [(UIRotationGestureRecognizer *)gesture rotation];
-        self.rotationAngle += angle;
-        CGRect frame = self.frame;
         view.transform = CGAffineTransformRotate(view.transform, angle);
         [(UIRotationGestureRecognizer *)gesture setRotation:0];
-        _offSetY += self.frame.origin.y - frame.origin.y;
-        _offSetX += self.frame.origin.x - frame.origin.x;
-        if ((self.rotationAngle > -0.01 && self.rotationAngle < 0) || (self.rotationAngle < 0.01 && self.rotationAngle > 0)) {
-            _offSetX = 0;
-            _offSetY = 0;
-        }
-        NSLog(@"%@",NSStringFromCGRect(self.frame));
         
     }
 
@@ -359,103 +390,38 @@ typedef NS_ENUM(NSInteger,ZYAutoLabelTouchType) {
 }
 
 - (void)changeArchPointToCenter{
-    self.layer.anchorPoint = CGPointMake(0.5, 0.5);
-    CGFloat centerX = self.center.x + self.frame.size.width/2;
-    CGFloat centerY = self.center.y + self.frame.size.height/2;
-    if (self.rotationAngle > 0) {
-        centerX += _offSetY;
-    }else{
-        centerY += _offSetY*2;
-    }
-    self.layer.position = CGPointMake(centerX, centerY);
+    [self setAnchorPoint:CGPointMake(.5, .5) forView:self];
 }
 
 - (void)changeTouchViewArchPoint{
-#warning 有问题 待修改
+
+    CGPoint anrchPoint;
+    
     switch (self.touchType) {
         case ZYAutoLabelTouchTypeLeftTop:{
-            if (CGPointEqualToPoint(self.layer.anchorPoint, CGPointMake(1, 1))) {
-                return;
-            }
-            CGPoint origin = self.frame.origin;
-            CGFloat originX = origin.x + self.frame.size.width;
-            CGFloat originY = origin.y + self.frame.size.height;
-            if (self.rotationAngle > 0) {
-                originY = origin.y - _offSetY*2;
-                originX = origin.x - _offSetY*4;
-            }else if(self.rotationAngle < 0){
-//                originX +=  _offSetY;
-                originY +=  _offSetY*2;
-            }
-            
-            self.layer.anchorPoint = CGPointMake(1, 1);
-            self.center = CGPointMake(originX, originY);
-            
+            anrchPoint = CGPointMake(1, 1);
         }
             
             break;
         case ZYAutoLabelTouchTypeRightTop:{
-            if (CGPointEqualToPoint(self.layer.anchorPoint, CGPointMake(0, 1))) {
-                return;
-            }
-            CGPoint origin = self.frame.origin;
-            CGFloat originX = origin.x;
-            CGFloat originY = origin.y + self.frame.size.height;
-            if (self.rotationAngle > 0) {
-                originY = origin.y;
-                originX = origin.x - _offSetY;
-            }else if(self.rotationAngle < 0){
-                originX += - _offSetY;
-//                originY +=  - _offSetY;
-            }
-            
-            self.layer.anchorPoint = CGPointMake(0, 1);
-            self.center = CGPointMake(originX, originY);
+            anrchPoint = CGPointMake(0, 1);
         }
             break;
         case ZYAutoLabelTouchTypeRifhtBottom:{
-            if (CGPointEqualToPoint(self.layer.anchorPoint, CGPointMake(0, 0))) {
-                return;
-            }
-            CGPoint origin = self.frame.origin;
-            CGFloat originX;
-            CGFloat originY;
-            if (self.rotationAngle > 0) {
-                originY = origin.y;
-                originX = origin.x - _offSetY;
-            }else{
-                originX = origin.x;
-                originY = origin.y - _offSetY*2;
-            }
-            
-            self.layer.anchorPoint = CGPointMake(0, 0);
-            self.center = CGPointMake(originX, originY);
+            anrchPoint = CGPointMake(0, 0);
         }
             
             break;
         case ZYAutoLabelTouchTypeLeftBottom:{
-            if (CGPointEqualToPoint(self.layer.anchorPoint, CGPointMake(1, 0))) {
-                return;
-            }
-            CGPoint origin = self.frame.origin;
-            CGFloat originX = origin.x + self.frame.size.width;
-            CGFloat originY = origin.y;
-            if (self.rotationAngle > 0) {
-                originY = origin.y;
-                originX = origin.x - _offSetY;
-            }else if(self.rotationAngle < 0){
-//                originX += - _offSetY*2;
-                //                originY +=  - _offSetY;
-            }
-            
-            self.layer.anchorPoint = CGPointMake(1, 0);
-            self.center = CGPointMake(originX, originY);
+            anrchPoint = CGPointMake(1, 0);
         }
             
             break;
         default:
             break;
     }
+    
+    [self setAnchorPoint:anrchPoint forView:self];
     
 }
  

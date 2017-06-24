@@ -12,5 +12,9 @@
 
 @property(nonatomic,strong) NSString *text;
 
+@property(nonatomic,weak) UIView *selfView;
+
+@property(nonatomic,assign) CGFloat scale;
+
 
 @end
